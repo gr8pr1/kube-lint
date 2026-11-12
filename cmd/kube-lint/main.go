@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -33,13 +35,22 @@ func main() {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tNODE")
+	fmt.Fprintln(w, "NAMESPACE\tNAME\tPHASE\tRESTARTS\tAGE\tNODE")
 	for _, pod := range pods.Items {
 		nodeName := pod.Spec.NodeName
 		if nodeName == "" {
 			nodeName = "<none>"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", pod.Namespace, pod.Name, pod.Status.Phase, nodeName)
+
+		var restarts int32
+		// Init containers are excluded to match kubectl's RESTARTS column.
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			restarts += containerStatus.RestartCount
+		}
+
+		age := duration.HumanDuration(time.Since(pod.CreationTimestamp.Time))
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n", pod.Namespace, pod.Name, pod.Status.Phase, restarts, age, nodeName)
 	}
 
 	err = w.Flush()
